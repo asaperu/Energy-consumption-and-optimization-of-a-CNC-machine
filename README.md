@@ -1,0 +1,1 @@
+# Energy-consumption-and-optimization-of-a-CNC-machine
