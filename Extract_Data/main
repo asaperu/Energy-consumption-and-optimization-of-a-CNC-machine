@@ -1,0 +1,93 @@
+import os
+import sys
+
+# Import funzioni nella cartella "Functions"
+sys.path.append(os.path.join(os.path.dirname(__file__), "Functions"))
+
+from Clean_columns import process_telemetries
+from Parser_Gcode import parse_lavorazioni_regex
+from Compare_agg import merge_gcode_telemetry
+from Computee_insights import compute_insights
+
+
+def _clean_path(p: str) -> str:
+    return p.strip().strip('"').strip("'")
+
+
+def _ask_file(prompt: str) -> str:
+    print(prompt)
+    path = _clean_path(input())
+    if not os.path.isfile(path):
+        print(f"❌ File non trovato: {path}")
+        sys.exit(1)
+    return path
+
+
+def _run_step(func, *args, **kwargs):
+    try:
+        return func(*args, **kwargs)
+    except Exception as e:
+        print(f"❌ Errore: {e}")
+        sys.exit(1)
+
+
+def main():
+    # =====================================================
+    # Input
+    # =====================================================
+    gcode_path = _ask_file("📂  Inserisci file G-code (.cnc):")
+    telem_raw_path = _ask_file("📊  Inserisci file telemetrie (.xlsx):")
+
+    # Output paths
+    project_dir = os.path.dirname(__file__)
+    output_dir = os.path.join(project_dir, "Output")
+    os.makedirs(output_dir, exist_ok=True)
+
+    base_name = os.path.splitext(os.path.basename(gcode_path))[0]
+
+    telem_filtered_path = os.path.join(output_dir, "Telemetries_FILTERED.xlsx")
+    parsed_path = os.path.join(output_dir, f"{base_name}_parsed.xlsx")
+    merged_path = os.path.join(output_dir, f"{base_name}_merged.xlsx")
+    insight_path = os.path.join(output_dir, f"{base_name}_merged_with_insights.xlsx")
+
+    # =====================================================
+    print("\n[1] Filtraggio telemetrie...")
+    # =====================================================
+    _run_step(
+        process_telemetries,
+        input_path=telem_raw_path,
+        output_filtered=telem_filtered_path,
+        sheet_compressed="Compressed",
+    )
+
+    # =====================================================
+    print("\n[2] Parsing G-code...")
+    # =====================================================
+    df_parsed = _run_step(parse_lavorazioni_regex, gcode_path)
+    df_parsed.to_excel(parsed_path, index=False)
+
+    # =====================================================
+    print("\n[3] Merge parsed + telemetrie...")
+    # =====================================================
+    _run_step(
+        merge_gcode_telemetry,
+        file_parsed=parsed_path,
+        file_telemetry=telem_filtered_path,
+        output_path=merged_path,
+        max_steps=15,
+    )
+
+    # =====================================================
+    print("\n[4] Calcolo insights...")
+    # =====================================================
+    _run_step(compute_insights, merged_path, insight_path)
+
+    # =====================================================
+    # Finito
+    # =====================================================
+    print("\n✅ Pipeline completata.")
+    print(f"Output salvati in: {output_dir}")
+
+
+if __name__ == "__main__":
+    main()
